@@ -41,3 +41,19 @@ void Config::clearWifi() {
         prefs.end();
     }
 }
+
+int Config::loadRotation(int fallback) {
+    Preferences prefs;
+    if (!prefs.begin(NS, true)) return fallback;
+    int r = prefs.getInt("rotation", fallback);
+    prefs.end();
+    return r;
+}
+
+void Config::saveRotation(int r) {
+    Preferences prefs;
+    if (prefs.begin(NS, false)) {
+        prefs.putInt("rotation", r);
+        prefs.end();
+    }
+}

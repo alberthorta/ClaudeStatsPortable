@@ -17,4 +17,7 @@ namespace Config {
     bool save(const AppConfig& cfg);
     void clear();
     void clearWifi();
+
+    int  loadRotation(int fallback = 1);
+    void saveRotation(int r);
 }

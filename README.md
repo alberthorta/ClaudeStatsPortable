@@ -24,6 +24,8 @@ The firmware uses the non-Touch variant; the Touch version should also work but 
 - **5-hour and weekly utilization panels** with pace bar, pace label (`Well under pace`, `Under pace`, `On pace`, `Over pace`, `Burning fast`), used/elapsed percentages, and countdown to reset
 - **Colors mirror the macOS app** (green / mint / yellow / orange / red) based on `used / elapsed`
 - **Adaptive layout** — if only one window has data the panel expands to full screen
+- **Rotatable screen** — BOOT button cycles through 4 orientations (landscape / portrait / flipped), layout adapts automatically. The chosen rotation persists across reboots.
+- **Resilient to transient errors** — if a fetch fails, the previous values stay on screen with a small red **CACHED** badge next to the refresh counter. The full-screen error view only appears on the very first boot when no data has been fetched yet.
 - **Captive portal provisioning** — on first boot the device creates an open `ClaudeStats` WiFi AP; connect to it and any browser request is redirected to the setup form
 - **Auto-discovery of `orgId`** — only the `sessionKey` is required, the organization UUID is fetched from `/api/organizations` and cached in NVS
 - **On-device web config** — short-press KEY shows the device IP, visit it from any browser to edit settings, reboot is automatic after save
@@ -49,6 +51,7 @@ The firmware uses the non-Touch variant; the Touch version should also work but 
 |---|---|
 | Short press **KEY** (GPIO14) | Toggle between Stats and Info views |
 | Long press **KEY** (≥ 10 s) | Clear WiFi credentials, reboot into setup mode. **Keeps `sessionKey` and `orgId`** so you only re-enter the WiFi. |
+| Short press **BOOT** (GPIO0) | Rotate the screen 90° (cycles through 4 orientations, saved in NVS) |
 | Open `http://<device-ip>` | Edit config form with WiFi + sessionKey, reboots on save |
 
 ---

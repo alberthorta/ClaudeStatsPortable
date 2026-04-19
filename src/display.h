@@ -6,6 +6,9 @@
 namespace Display {
     void begin();
 
+    void setRotation(int r);  // 0..3 — applies and recreates sprite
+    int  rotation();
+
     void showProvisioning(const String& apSsid, const String& ip);
     void showConnecting(const String& ssid);
     void showResetting();

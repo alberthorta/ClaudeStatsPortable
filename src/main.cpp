@@ -9,8 +9,10 @@
 #include "webconfig.h"
 
 static const int           KEY_BTN          = 14;
+static const int           BOOT_BTN         = 0;
 static const unsigned long RESET_HOLD_MS    = 10000;
 static const unsigned long SHORT_MIN_MS     = 50;
+static const unsigned long SHORT_MAX_MS     = 2000;
 static const unsigned long WIFI_TIMEOUT_MS  = 20000;
 static const unsigned long REFRESH_MS       = 30000;
 
@@ -26,6 +28,8 @@ static unsigned long  lastUiTickMs     = 0;
 static unsigned long  keyPressStart    = 0;
 static bool           keyWasDown       = false;
 static bool           resetFired       = false;
+static unsigned long  bootPressStart   = 0;
+static bool           bootWasDown      = false;
 static View           view             = View::Stats;
 
 static bool connectToStoredWifi() {
@@ -102,6 +106,23 @@ static void toggleView() {
     redraw();
 }
 
+static void handleBootButton() {
+    bool pressed = digitalRead(BOOT_BTN) == LOW;
+    if (pressed && !bootWasDown) {
+        bootPressStart = millis();
+        bootWasDown    = true;
+    } else if (!pressed && bootWasDown) {
+        unsigned long held = millis() - bootPressStart;
+        bootWasDown = false;
+        if (held >= SHORT_MIN_MS && held < SHORT_MAX_MS) {
+            int r = (Display::rotation() + 1) & 3;
+            Display::setRotation(r);
+            Config::saveRotation(r);
+            redraw();
+        }
+    }
+}
+
 static void handleKeyButton() {
     bool pressed = digitalRead(KEY_BTN) == LOW;
 
@@ -127,8 +148,10 @@ static void handleKeyButton() {
 
 void setup() {
     Serial.begin(115200);
-    pinMode(KEY_BTN, INPUT_PULLUP);
+    pinMode(KEY_BTN,  INPUT_PULLUP);
+    pinMode(BOOT_BTN, INPUT_PULLUP);
     Display::begin();
+    Display::setRotation(Config::loadRotation(1));
 
     if (!Config::load(cfg)) {
         cfg = Provisioning::run(cfg);
@@ -170,6 +193,7 @@ void setup() {
 
 void loop() {
     handleKeyButton();
+    handleBootButton();
     WebConfig::loop();
 
     unsigned long nowMs = millis();
