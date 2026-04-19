@@ -244,7 +244,7 @@ void Display::showInfo(const AppConfig& cfg, const String& ip) {
     flush();
 }
 
-void Display::showStats(const Usage& usage, time_t now, int refreshInSec) {
+void Display::showStats(const Usage& usage, time_t now, int refreshInSec, bool stale) {
     ensureSprite();
     clear();
     auto& g = gfx();
@@ -258,7 +258,15 @@ void Display::showStats(const Usage& usage, time_t now, int refreshInSec) {
     g.setTextColor(COLOR_MUTED, COLOR_BG);
     char buf[24];
     snprintf(buf, sizeof(buf), "refresh %ds", refreshInSec);
-    g.drawString(buf, SCREEN_W - 8, 4, 2);
+    int rightX = SCREEN_W - 8;
+    g.drawString(buf, rightX, 4, 2);
+
+    if (stale) {
+        int refreshW = g.textWidth(buf, 2);
+        int cachedX  = rightX - refreshW - 8;
+        g.setTextColor(TFT_RED, COLOR_BG);
+        g.drawString("CACHED", cachedX, 4, 2);
+    }
 
     g.drawFastHLine(0, 22, SCREEN_W, COLOR_DIVIDER);
 

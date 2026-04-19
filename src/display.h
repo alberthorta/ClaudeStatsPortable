@@ -15,7 +15,8 @@ namespace Display {
 
     // Full stats view: 5-hour panel + weekly panel.
     // refreshInSec is the countdown until the next API fetch.
-    void showStats(const Usage& usage, time_t now, int refreshInSec);
+    // stale=true draws a red "CACHED" badge next to the refresh counter.
+    void showStats(const Usage& usage, time_t now, int refreshInSec, bool stale = false);
 
     void showInfo(const AppConfig& cfg, const String& ip);
 }

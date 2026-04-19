@@ -19,6 +19,7 @@ enum class View { Stats, Info };
 static AppConfig      cfg;
 static Usage          lastUsage;
 static bool           lastOk           = false;
+static bool           haveGoodData     = false;
 static String         lastError;
 static unsigned long  lastFetchMs      = 0;
 static unsigned long  lastUiTickMs     = 0;
@@ -57,23 +58,26 @@ static int secondsUntilNextFetch() {
 }
 
 static void doFetch() {
-    Api::Result r = Api::fetchUsage(cfg, lastUsage);
+    Usage fresh;
+    Api::Result r = Api::fetchUsage(cfg, fresh);
     lastFetchMs = millis();
     switch (r) {
         case Api::Result::Ok:
-            lastOk = true;
-            lastError = "";
+            lastUsage    = fresh;
+            lastOk       = true;
+            haveGoodData = true;
+            lastError    = "";
             break;
         case Api::Result::Unauthorized:
-            lastOk = false;
+            lastOk    = false;
             lastError = "Session expired. Edit at device IP or reset.";
             break;
         case Api::Result::Network:
-            lastOk = false;
+            lastOk    = false;
             lastError = "Network error.";
             break;
         case Api::Result::Parse:
-            lastOk = false;
+            lastOk    = false;
             lastError = "Bad response from server.";
             break;
     }
@@ -86,8 +90,8 @@ static void redraw() {
     }
     time_t now = time(nullptr);
     int secs = secondsUntilNextFetch();
-    if (lastOk) {
-        Display::showStats(lastUsage, now, secs);
+    if (haveGoodData) {
+        Display::showStats(lastUsage, now, secs, /*stale=*/!lastOk);
     } else {
         Display::showApiError(lastError, secs);
     }
