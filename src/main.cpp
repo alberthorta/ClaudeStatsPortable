@@ -7,14 +7,16 @@
 #include "api.h"
 #include "stats.h"
 #include "webconfig.h"
+#include "battery.h"
 
-static const int           KEY_BTN          = 14;
-static const int           BOOT_BTN         = 0;
-static const unsigned long RESET_HOLD_MS    = 10000;
-static const unsigned long SHORT_MIN_MS     = 50;
-static const unsigned long SHORT_MAX_MS     = 2000;
-static const unsigned long WIFI_TIMEOUT_MS  = 20000;
-static const unsigned long REFRESH_MS       = 30000;
+static const int           KEY_BTN              = 14;
+static const int           BOOT_BTN             = 0;
+static const unsigned long RESET_HOLD_MS        = 10000;
+static const unsigned long SCREEN_SLEEP_HOLD_MS = 2000;
+static const unsigned long SHORT_MIN_MS         = 50;
+static const unsigned long SHORT_MAX_MS         = 2000;
+static const unsigned long WIFI_TIMEOUT_MS      = 20000;
+static const unsigned long REFRESH_MS           = 30000;
 
 enum class View { Stats, Info };
 
@@ -30,7 +32,12 @@ static bool           keyWasDown       = false;
 static bool           resetFired       = false;
 static unsigned long  bootPressStart   = 0;
 static bool           bootWasDown      = false;
+static bool           bootSleepFired   = false;
+static bool           bootWakeOnly     = false;
+static bool           keyWakeOnly      = false;
+static bool           screenOn         = true;
 static View           view             = View::Stats;
+static uint32_t       lastAutoOpenDate = 0;  // YYYYMMDD UTC
 
 static bool connectToStoredWifi() {
     WiFi.mode(WIFI_STA);
@@ -61,6 +68,33 @@ static int secondsUntilNextFetch() {
     return (int)((REFRESH_MS - elapsed) / 1000);
 }
 
+static void checkAutoOpen() {
+    if (!cfg.autoOpenEnabled) return;
+    time_t now = time(nullptr);
+    if (now < 1700000000) return;  // NTP not synced yet
+    struct tm g;
+    if (!gmtime_r(&now, &g)) return;
+    uint32_t today = (uint32_t)(g.tm_year + 1900) * 10000u
+                   + (uint32_t)(g.tm_mon + 1) * 100u
+                   + (uint32_t)g.tm_mday;
+    if (today == lastAutoOpenDate) return;
+
+    bool timeReached = g.tm_hour > cfg.autoOpenHourUtc
+                    || (g.tm_hour == cfg.autoOpenHourUtc && g.tm_min >= cfg.autoOpenMinuteUtc);
+    if (!timeReached) return;
+
+    Serial.printf("[auto-open] firing for %04d-%02d-%02d (cfg %02d:%02d UTC)\n",
+                  g.tm_year + 1900, g.tm_mon + 1, g.tm_mday,
+                  cfg.autoOpenHourUtc, cfg.autoOpenMinuteUtc);
+    Api::Result r = Api::openWindow(cfg);
+    Serial.printf("[auto-open] result=%d\n", (int)r);
+
+    // Mark the day as attempted either way so a transient failure doesn't
+    // spam claude.ai. One shot per day.
+    lastAutoOpenDate = today;
+    Config::saveLastAutoOpenDate(today);
+}
+
 static void doFetch() {
     Usage fresh;
     Api::Result r = Api::fetchUsage(cfg, fresh);
@@ -88,14 +122,15 @@ static void doFetch() {
 }
 
 static void redraw() {
+    int batMv = Battery::millivolts();
     if (view == View::Info) {
-        Display::showInfo(cfg, WiFi.localIP().toString());
+        Display::showInfo(cfg, WiFi.localIP().toString(), batMv);
         return;
     }
     time_t now = time(nullptr);
     int secs = secondsUntilNextFetch();
     if (haveGoodData) {
-        Display::showStats(lastUsage, now, secs, /*stale=*/!lastOk);
+        Display::showStats(lastUsage, now, batMv, secs, /*stale=*/!lastOk);
     } else {
         Display::showApiError(lastError, secs);
     }
@@ -106,15 +141,38 @@ static void toggleView() {
     redraw();
 }
 
+static void wakeScreen() {
+    if (screenOn) return;
+    screenOn = true;
+    Display::setBacklight(true);
+    redraw();
+}
+
+static void sleepScreen() {
+    if (!screenOn) return;
+    screenOn = false;
+    Display::setBacklight(false);
+}
+
 static void handleBootButton() {
     bool pressed = digitalRead(BOOT_BTN) == LOW;
     if (pressed && !bootWasDown) {
         bootPressStart = millis();
         bootWasDown    = true;
+        bootSleepFired = false;
+        // If the screen was off, this press is a wake-up only: consume it
+        // so the release doesn't also rotate.
+        bootWakeOnly   = !screenOn;
+        wakeScreen();
+    } else if (pressed && bootWasDown && !bootSleepFired && !bootWakeOnly &&
+               millis() - bootPressStart >= SCREEN_SLEEP_HOLD_MS) {
+        bootSleepFired = true;
+        sleepScreen();
     } else if (!pressed && bootWasDown) {
         unsigned long held = millis() - bootPressStart;
         bootWasDown = false;
-        if (held >= SHORT_MIN_MS && held < SHORT_MAX_MS) {
+        if (!bootSleepFired && !bootWakeOnly &&
+            held >= SHORT_MIN_MS && held < SHORT_MAX_MS) {
             int r = (Display::rotation() + 1) & 3;
             Display::setRotation(r);
             Config::saveRotation(r);
@@ -130,7 +188,9 @@ static void handleKeyButton() {
         keyPressStart = millis();
         keyWasDown    = true;
         resetFired    = false;
-    } else if (pressed && keyWasDown && !resetFired &&
+        keyWakeOnly   = !screenOn;
+        wakeScreen();
+    } else if (pressed && keyWasDown && !resetFired && !keyWakeOnly &&
                millis() - keyPressStart >= RESET_HOLD_MS) {
         resetFired = true;
         Display::showResetting();
@@ -140,7 +200,8 @@ static void handleKeyButton() {
     } else if (!pressed && keyWasDown) {
         unsigned long held = millis() - keyPressStart;
         keyWasDown = false;
-        if (!resetFired && held >= SHORT_MIN_MS && held < RESET_HOLD_MS) {
+        if (!resetFired && !keyWakeOnly &&
+            held >= SHORT_MIN_MS && held < RESET_HOLD_MS) {
             toggleView();
         }
     }
@@ -184,6 +245,8 @@ void setup() {
 
     WebConfig::begin(cfg);
 
+    lastAutoOpenDate = Config::loadLastAutoOpenDate();
+
     Display::showLoading("Fetching usage...");
     if (!cfg.orgId.isEmpty()) doFetch();
     else lastFetchMs = millis();
@@ -200,10 +263,11 @@ void loop() {
 
     if (nowMs - lastFetchMs >= REFRESH_MS) {
         doFetch();
-        redraw();
+        if (screenOn) redraw();
         lastUiTickMs = nowMs;
     } else if (nowMs - lastUiTickMs >= 1000) {
-        redraw();
+        checkAutoOpen();
+        if (screenOn) redraw();
         lastUiTickMs = nowMs;
     }
 

@@ -1,4 +1,5 @@
 #include "display.h"
+#include "battery.h"
 #include <TFT_eSPI.h>
 
 static TFT_eSPI      tft;
@@ -52,6 +53,12 @@ static void clear(uint16_t color = COLOR_BG) {
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
 void Display::begin() {
+    // GPIO15 = LCD_POWER_ON on the T-Display S3. When running on USB the
+    // display rail is fed directly, but on battery the MCU has to drive this
+    // pin HIGH or the panel goes dark (buttons keep working).
+    pinMode(15, OUTPUT);
+    digitalWrite(15, HIGH);
+
     tft.init();
     currentRot = 1;
     tft.setRotation(currentRot);
@@ -69,6 +76,10 @@ void Display::setRotation(int r) {
 }
 
 int Display::rotation() { return currentRot; }
+
+void Display::setBacklight(bool on) {
+    digitalWrite(TFT_BL, on ? HIGH : LOW);
+}
 
 // ─── Simple full-screen helpers (direct to tft) ─────────────────────────────
 
@@ -139,7 +150,7 @@ void Display::showApiError(const String& msg, int refreshInSec) {
     flush();
 }
 
-void Display::showInfo(const AppConfig& cfg, const String& ip) {
+void Display::showInfo(const AppConfig& cfg, const String& ip, int batteryMv) {
     if (!spriteReady) createSprite();
     clear();
     auto& g = gfx();
@@ -162,6 +173,45 @@ void Display::showInfo(const AppConfig& cfg, const String& ip) {
     g.drawString("WiFi:", padX, y, 2);
     g.setTextColor(COLOR_TEXT, COLOR_BG);
     g.drawString(cfg.ssid, padX + 52, y, 2);
+    y += 24;
+
+    // Auto-open 5h schedule: inline, local time (UTC+offset already baked in
+    // at save time; we just present it back in what was the user's TZ then).
+    g.setTextColor(COLOR_MUTED, COLOR_BG);
+    g.drawString("Auto 5h:", padX, y, 2);
+    char ao[24];
+    if (cfg.autoOpenEnabled) {
+        int total = cfg.autoOpenHourUtc * 60 + cfg.autoOpenMinuteUtc
+                  + cfg.autoOpenOffsetMin;
+        int lh = ((total / 60) % 24 + 24) % 24;
+        int lm = ((total % 60) + 60) % 60;
+        snprintf(ao, sizeof(ao), "%02d:%02d", lh, lm);
+        g.setTextColor(COLOR_TEXT, COLOR_BG);
+    } else {
+        snprintf(ao, sizeof(ao), "off");
+    }
+    g.drawString(ao, padX + 72, y, 2);
+    y += 24;
+
+    // Battery: "USBC (4.18V)" while plugged, "85% (3.94V)" on battery
+    g.setTextColor(COLOR_MUTED, COLOR_BG);
+    g.drawString("Battery:", padX, y, 2);
+    int bpct = Battery::percent(batteryMv);
+    bool bchg = Battery::isCharging(batteryMv);
+    char bb[32];
+    if (bchg) {
+        snprintf(bb, sizeof(bb), "USBC (%d.%02dV)",
+                 batteryMv / 1000, (batteryMv / 10) % 100);
+    } else {
+        snprintf(bb, sizeof(bb), "%d%% (%d.%02dV)",
+                 bpct, batteryMv / 1000, (batteryMv / 10) % 100);
+    }
+    uint16_t bc = bchg      ? COLOR_ACCENT
+                : (bpct > 50) ? TFT_GREEN
+                : (bpct > 20) ? TFT_YELLOW
+                              : TFT_RED;
+    g.setTextColor(bc, COLOR_BG);
+    g.drawString(bb, padX + 72, y, 2);
     y += 24;
 
     // Helper: label on its own line, then wrapped value indented below.
@@ -306,29 +356,58 @@ static void drawPanel(TFT_eSPI& g, int y, int panelH, const char* title,
     else                        drawPanelLandscape(g, y, title,          w, p, now, isWeekly, tall);
 }
 
-void Display::showStats(const Usage& usage, time_t now, int refreshInSec, bool stale) {
+void Display::showStats(const Usage& usage, time_t now, int batteryMv,
+                         int refreshInSec, bool stale) {
     if (!spriteReady) createSprite();
     clear();
     auto& g = gfx();
     int W = screenW(), H = screenH();
+    const bool landscape = W > H;
 
     // Header
     g.setTextDatum(TL_DATUM);
     g.setTextColor(COLOR_ACCENT, COLOR_BG);
     g.drawString("ClaudeStats", 8, 4, 2);
 
+    // Battery indicator (top-right): "NN%" + icon
+    const int iconW = 22, iconH = 10, nubW = 2, nubH = 4;
+    const int rightX = W - 8;
+    const int iconX  = rightX - iconW - nubW;
+    const int iconY  = 7;
+
+    int pct = Battery::percent(batteryMv);
+    bool charging = Battery::isCharging(batteryMv);
+    uint16_t fillColor = (pct > 50) ? TFT_GREEN
+                       : (pct > 20) ? TFT_YELLOW
+                                    : TFT_RED;
+    uint16_t borderColor = charging ? COLOR_ACCENT : COLOR_MUTED;
+
+    g.drawRect(iconX, iconY, iconW, iconH, borderColor);
+    g.fillRect(iconX + iconW, iconY + (iconH - nubH) / 2, nubW, nubH, borderColor);
+    int fillW = ((iconW - 2) * pct) / 100;
+    if (fillW > 0) g.fillRect(iconX + 1, iconY + 1, fillW, iconH - 2, fillColor);
+
+    char pctBuf[8];
+    if (charging) snprintf(pctBuf, sizeof(pctBuf), "USBC");
+    else          snprintf(pctBuf, sizeof(pctBuf), "%d%%", pct);
     g.setTextDatum(TR_DATUM);
-    g.setTextColor(COLOR_MUTED, COLOR_BG);
-    char buf[24];
-    snprintf(buf, sizeof(buf), "refresh %ds", refreshInSec);
-    int rightX = W - 8;
-    g.drawString(buf, rightX, 4, 2);
+    g.setTextColor(charging ? COLOR_ACCENT : COLOR_MUTED, COLOR_BG);
+    g.drawString(pctBuf, iconX - 4, 4, 2);
+    int pctW = g.textWidth(pctBuf, 2);
+
+    // Landscape has room for the refresh countdown to the left of the battery.
+    int refreshRightX = iconX - pctW - 12;
+    if (landscape) {
+        char rbuf[24];
+        snprintf(rbuf, sizeof(rbuf), "refresh %ds", refreshInSec);
+        g.setTextColor(COLOR_MUTED, COLOR_BG);
+        g.drawString(rbuf, refreshRightX, 4, 2);
+        refreshRightX -= g.textWidth(rbuf, 2) + 8;
+    }
 
     if (stale) {
-        int refreshW = g.textWidth(buf, 2);
-        int cachedX  = rightX - refreshW - 8;
         g.setTextColor(TFT_RED, COLOR_BG);
-        g.drawString("CACHED", cachedX, 4, 2);
+        g.drawString("CACHED", refreshRightX, 4, 2);
     }
 
     g.drawFastHLine(0, 22, W, COLOR_DIVIDER);
