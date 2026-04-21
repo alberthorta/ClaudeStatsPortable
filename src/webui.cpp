@@ -87,6 +87,63 @@ button:hover { transform: scale(1.02); box-shadow: 0 0 64px rgba(118,98,255,0.5)
   border: 1px solid rgba(34,197,94,0.30); }
 .hint { color: rgba(156,163,175,0.8); font-size: 12px;
   margin: 10px 0 0 0; line-height: 1.45; }
+.footer { margin-top: 22px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);
+  text-align: center; font-size: 12px; }
+.footer a { color: rgba(196,181,253,0.85); text-decoration: none; }
+.footer a:hover { color: #c4b5fd; text-decoration: underline; }
+.toolbar { display:flex; justify-content:flex-end; margin: 4px 0 10px 0; }
+.btnGhost {
+  display:inline-flex; align-items:center; gap:6px;
+  margin:0; padding: 6px 12px; width:auto;
+  background: rgba(255,255,255,0.06); color: rgba(229,231,235,0.88);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px; font-size: 12px; font-family: inherit;
+  cursor: pointer; box-shadow: none; }
+.btnGhost:hover {
+  transform: none; background: rgba(255,255,255,0.12); box-shadow: none; }
+.status { display:flex; justify-content:space-between; align-items:center;
+  gap:10px; padding:10px 14px; margin: 8px 0 4px 0;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; font-size: 13px; }
+.statusLabel { color: rgba(156,163,175,0.9); text-transform: uppercase;
+  letter-spacing: 0.06em; font-size: 11px; }
+.statusValue { color: rgba(229,231,235,0.95); font-weight: 500;
+  font-variant-numeric: tabular-nums; }
+.wifiList { margin: 10px 0 0 0; }
+.wifiRow { display:flex; justify-content:space-between; align-items:center;
+  padding: 8px 12px; margin-bottom: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; font-size: 13px; }
+.wifiRow .ssid { font-weight: 500; word-break: break-all; margin-right: 10px;
+  flex: 1; min-width: 0; }
+.wifiRow form { margin:0; }
+.wifiActions { display:flex; align-items:center; gap: 4px; flex-shrink: 0; }
+.wifiRow button {
+  margin: 0; padding: 4px 10px; width:auto; font-size: 12px;
+  background: rgba(239,68,68,0.12); color: #fca5a5;
+  border: 1px solid rgba(239,68,68,0.30); box-shadow: none; }
+.wifiRow button:hover { transform: none;
+  background: rgba(239,68,68,0.20); box-shadow: none; }
+.wifiRow button.btnMove {
+  background: rgba(255,255,255,0.06); color: rgba(229,231,235,0.85);
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 4px 8px; font-size: 13px; line-height: 1; }
+.wifiRow button.btnMove:hover {
+  background: rgba(255,255,255,0.12); }
+.wifiRow button.btnMove[disabled] {
+  opacity: 0.35; cursor: not-allowed;
+  background: rgba(255,255,255,0.03); }
+.wifiRow button.btnMove[disabled]:hover { background: rgba(255,255,255,0.03); }
+.addWifi { display:grid; grid-template-columns: 1fr 1fr auto; gap: 6px;
+  margin-top: 6px; }
+.addWifi input { padding: 8px 10px; font-size: 13px; }
+.addWifi button { margin: 0; width: auto; padding: 8px 14px; font-size: 13px;
+  background: rgba(118,98,255,0.20); color: #c4b5fd;
+  border: 1px solid rgba(118,98,255,0.35); box-shadow: none; }
+.addWifi button:hover { transform: none;
+  background: rgba(118,98,255,0.30); box-shadow: none; }
 )CSS";
 
 const char* const ICON_SVG = R"SVG(

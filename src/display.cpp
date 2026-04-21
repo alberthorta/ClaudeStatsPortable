@@ -81,6 +81,51 @@ void Display::setBacklight(bool on) {
     digitalWrite(TFT_BL, on ? HIGH : LOW);
 }
 
+void Display::panelSleep(bool in) {
+    // ST7789 command set: 0x10 = SLPIN, 0x11 = SLPOUT.
+    tft.writecommand(in ? 0x10 : 0x11);
+    // Datasheet requires 5 ms after either command before the next one.
+    delay(5);
+}
+
+void Display::showSleepArmed(const char* title, int secondsLeft,
+                              const char* subtitle) {
+    destroySprite();
+    digitalWrite(TFT_BL, HIGH);  // force visible, ignoring tier-1 state
+    tft.fillScreen(COLOR_BG);
+    int W = tft.width(), H = tft.height();
+    bool portrait = W < H;
+
+    const char* cancel = subtitle ? subtitle
+                        : (portrait ? "any button cancels"
+                                    : "press any button to cancel");
+
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(COLOR_MUTED, COLOR_BG);
+    tft.drawString(title, W / 2, H / 2 - 54, 2);
+
+    char buf[4]; snprintf(buf, sizeof(buf), "%d", secondsLeft);
+    tft.setTextColor(TFT_ORANGE, COLOR_BG);
+    tft.drawString(buf, W / 2, H / 2, 7);
+
+    tft.setTextColor(COLOR_MUTED, COLOR_BG);
+    tft.drawString(cancel, W / 2, H / 2 + 54, 2);
+
+    createSprite();  // recreate so that if cancelled, normal redraws work
+}
+
+void Display::showDeepSleep() {
+    destroySprite();
+    digitalWrite(TFT_BL, HIGH);
+    tft.fillScreen(COLOR_BG);
+    int W = tft.width(), H = tft.height();
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(COLOR_ACCENT, COLOR_BG);
+    tft.drawString("Sleeping…", W / 2, H / 2, 4);
+    // Sprite intentionally not recreated — the MCU is about to deep sleep
+    // and the panel will be powered down shortly after.
+}
+
 // ─── Simple full-screen helpers (direct to tft) ─────────────────────────────
 
 static void simpleHeader(const char* title, uint16_t color = TFT_CYAN) {

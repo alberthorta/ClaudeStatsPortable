@@ -138,11 +138,12 @@ void handleSave() {
         return;
     }
 
-    AppConfig cfg;
+    AppConfig cfg = preset;  // carry forward sessionKey-unrelated fields + existing wifi list
     cfg.ssid       = ssid;
     cfg.password   = password;
     cfg.sessionKey = sessionKey;
     cfg.orgId      = (sessionKey == preset.sessionKey) ? preset.orgId : "";
+    Config::addOrUpdateWifi(cfg, ssid, password);
 
     if (!Config::save(cfg)) {
         server.send(500, "text/html", pageWrap(formBody("Failed to save config to NVS.")));
